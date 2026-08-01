@@ -252,9 +252,6 @@ setup_package() {
     echo "================================================="
     echo "          PENGATURAN PACKAGE VIDAR8"
     echo "================================================="
-if [ ! -f "$PACKAGE_CACHE" ]; then
-    scan_packages
-fi
     scan_packages
 
     if [ ${#DETECTED_PACKAGES[@]} -eq 0 ]; then
@@ -470,22 +467,23 @@ fi
     (
         FIRST_RUN=true
         while true; do
-            if ps -A | grep -q "$pkg"
-then
-    continue
-fi
-                launch_clone "$pkg"
-
-wait_clone "$pkg" if ! ps -A | grep -q "$pkg"
-then
-    echo "[Retry] $pkg"
-
-    launch_clone "$pkg"
-fi>/dev/null 2>&1
-                if [ $? -ne 0 ]; then
-                    launch_clone "$pkg" >/dev/null 2>&1
+            for pkg in "${ACTIVE_PACKAGES[@]}"; do
+                if [ "$FIRST_RUN" = true ]; then
+                    sleep 3
+                    FIRST_RUN=false
+                else
+                    sleep "$DELAY_TIME"
                 fi
-                
+
+                if ! ps -A | grep -q "$pkg"; then
+                    launch_clone "$pkg"
+                    wait_clone "$pkg"
+                    if ! ps -A | grep -q "$pkg"; then
+                        echo "[Retry] $pkg"
+                        launch_clone "$pkg"
+                    fi
+                fi
+
                 if [ "$AUTO_GRID" = true ]; then
                     sleep 1
                     am task stack resize 2>/dev/null || true
@@ -660,7 +658,7 @@ while true; do
     echo "10. Toggle Auto-Clear Cache (Background)"
     echo "11. Refresh Daftar Clone"
     echo "================================================="
-    read -p "Pilih menu (1-10): " MENU_CHOICE
+    read -p "Pilih menu (1-11): " MENU_CHOICE
 
     case "$MENU_CHOICE" in
         1) setup_link ;;
@@ -705,25 +703,18 @@ while true; do
             exit 0
             ;;
         10) setup_autoclear_cache ;;
+        11)
+            rm -f "$PACKAGE_CACHE"
+            scan_packages
+            echo ""
+            echo "[+] Scan selesai."
+            echo "Clone ditemukan : ${#DETECTED_PACKAGES[@]}"
+            sleep 2
+            ;;
         *)
             echo ""
             echo "[x] Pilihan tidak valid!"
             sleep 1
             ;;
-        11)
-
-refresh_package_cache
-
-echo ""
-
-echo "[+] Scan selesai."
-
-echo "Clone ditemukan : ${#DETECTED_PACKAGES[@]}"
-
-sleep 2
-
-;;
-        
-    
     esac
 done
