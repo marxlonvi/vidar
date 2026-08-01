@@ -109,12 +109,26 @@ scan_packages() {
 
     while IFS= read -r pkg
     do
+        FOUND=false
 
-        if cmd package resolve-activity \
-            --brief \
-            "$pkg/com.roblox.client.ActivityProtocolRedirector" \
-            >/dev/null 2>&1
-        then
+        # Metode 1: resolve-activity (kadang exit code 0 walau "No activity found")
+        RESOLVE_OUT="$(cmd package resolve-activity --brief \
+            "$pkg/com.roblox.client.ActivityProtocolRedirector" 2>/dev/null)"
+        if [ -n "$RESOLVE_OUT" ] && ! echo "$RESOLVE_OUT" | grep -qi "no activity found"; then
+            FOUND=true
+        fi
+
+        # Metode 2: cek langsung ke dumpsys package (lebih toleran, tak perlu resolve-activity)
+        if [ "$FOUND" = false ] && dumpsys package "$pkg" 2>/dev/null | grep -q "ActivityProtocolRedirector"; then
+            FOUND=true
+        fi
+
+        # Metode 3: fallback nama package yang mengandung "roblox"
+        if [ "$FOUND" = false ] && echo "$pkg" | grep -qi "roblox"; then
+            FOUND=true
+        fi
+
+        if [ "$FOUND" = true ]; then
             DETECTED_PACKAGES+=("$pkg")
         fi
 
