@@ -1,59 +1,60 @@
 #!/bin/bash
 
 # ================= KONFIGURASI AUTO-UPDATE =================
+SCRIPT_VERSION="vidar8"
 SCRIPT_URL="https://raw.githubusercontent.com/marxlonvi/vidar/refs/heads/main/vidar8.sh"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 
 check_update() {
-    if [ "$SKIP_UPDATE" == "1" ]; then
+    if [ "$SKIP_UPDATE" = "1" ]; then
         return
     fi
 
-    TMP_SCRIPT="/tmp/roblox_autojoin_latest.sh"
-    if command -v curl &> /dev/null; then
-        curl -sL "$SCRIPT_URL" -o "$TMP_SCRIPT" 2>/dev/null
+    TMP_SCRIPT="/tmp/vidar8_latest.sh"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$SCRIPT_URL" -o "$TMP_SCRIPT" 2>/dev/null || return
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$TMP_SCRIPT" "$SCRIPT_URL" || return
     else
         return
     fi
 
-    if [ ! -s "$TMP_SCRIPT" ]; then
+    [ ! -s "$TMP_SCRIPT" ] && {
         rm -f "$TMP_SCRIPT"
         return
-    fi
+    }
 
-    if ! cmp -s "$TMP_SCRIPT" "$SCRIPT_PATH" 2>/dev/null; then
-        echo "[*] Versi baru terdeteksi! Memperbarui script..."
+    if ! cmp -s "$TMP_SCRIPT" "$SCRIPT_PATH"; then
+        echo ""
+        echo "[*] Update baru ditemukan ($SCRIPT_VERSION)"
         cp "$TMP_SCRIPT" "$SCRIPT_PATH"
         chmod +x "$SCRIPT_PATH"
         rm -f "$TMP_SCRIPT"
-        echo "[+] Update selesai. Menjalankan ulang script..."
+        echo "[+] Update selesai."
         sleep 1
         SKIP_UPDATE=1 exec bash "$SCRIPT_PATH" "$@"
-        exit 0
+        exit
     fi
 
     rm -f "$TMP_SCRIPT"
 }
 
-# Auto-update aktif secara default.
-# SCRIPT_URL di atas sudah pakai format TANPA commit-hash
-# (.../<gistid>/raw/<filename>) sehingga otomatis selalu mengambil
-# revisi TERBARU dari gist tanpa perlu diedit ulang tiap kali kamu
-# update gist-nya. Kalau suatu saat mau matikan sementara:
-#   SKIP_UPDATE=1 bash vidar2.sh
 check_update "$@"
-# =============================================================
+# ===========================================================
 
 # Variabel Global & File Konfigurasi
 BG_PID=""
 ROBLOX_PS_LINK=""
 DELAY_TIME=60
 ACTIVE_PACKAGES=()
+PACKAGE_CACHE="$HOME/.vidar8_packages"
+DETECTED_PACKAGES=()
 AUTO_GRID=true
 
-CONFIG_FILE="$HOME/.vidar7_config"
-PID_FILE="$HOME/.vidar7_pid"
-CACHE_PID_FILE="$HOME/.vidar7_cache_pid"
+CONFIG_FILE="$HOME/.vidar8_config"
+PID_FILE="$HOME/.vidar8_pid"
+CACHE_PID_FILE="$HOME/.vidar8_cache_pid"
 AUTO_CLEAR_CACHE=false
 CACHE_INTERVAL=300
 CACHE_PID=""
@@ -91,6 +92,55 @@ load_config() {
             rm -f "$CACHE_PID_FILE"
         fi
     fi
+}
+scan_packages() {
+
+    DETECTED_PACKAGES=()
+
+    if [ -f "$PACKAGE_CACHE" ]; then
+        mapfile -t DETECTED_PACKAGES < "$PACKAGE_CACHE"
+
+        if [ ${#DETECTED_PACKAGES[@]} -gt 0 ]; then
+            return
+        fi
+    fi
+
+    echo "[*] Mencari clone Roblox..."
+
+    while IFS= read -r pkg
+    do
+
+        if cmd package resolve-activity \
+            --brief \
+            "$pkg/com.roblox.client.ActivityProtocolRedirector" \
+            >/dev/null 2>&1
+        then
+            DETECTED_PACKAGES+=("$pkg")
+        fi
+
+    done < <(
+        pm list packages | sed 's/package://'
+    )
+
+    printf "%s\n" "${DETECTED_PACKAGES[@]}" > "$PACKAGE_CACHE"
+
+}
+clean_packages(){
+
+    NEW_LIST=()
+
+    for pkg in "${ACTIVE_PACKAGES[@]}"
+    do
+        if pm list packages | grep -q "^package:$pkg$"
+        then
+            NEW_LIST+=("$pkg")
+        fi
+    done
+
+    ACTIVE_PACKAGES=("${NEW_LIST[@]}")
+
+    save_config
+
 }
 
 # Hentikan Bot Background
@@ -160,9 +210,11 @@ start_cache_clear() {
     CACHE_PID=$!
     echo "$CACHE_PID" > "$CACHE_PID_FILE"
 }
+scan_packages >/dev/null 2>&1
 
 # Muat Config & Wake-Lock
 load_config
+clean_packages
 if command -v termux-wake-lock &> /dev/null; then
     termux-wake-lock
 fi
@@ -198,87 +250,142 @@ setup_link() {
 setup_package() {
     clear
     echo "================================================="
-    echo "       PENGATURAN PACKAGE  "
+    echo "          PENGATURAN PACKAGE VIDAR8"
     echo "================================================="
-    echo "[*] Mendeteksi Roblox & Clone..."
+if [ ! -f "$PACKAGE_CACHE" ]; then
+    scan_packages
+fi
+    scan_packages
 
-    ACTIVE_PACKAGES=()
-    
-    # Murni hanya 1 cara deteksi
-    DETECTED_PACKAGES=()
-
-while IFS= read -r pkg; do
-    if dumpsys package "$pkg" 2>/dev/null | grep -qi "com.roblox.client.ActivityProtocolRedirector"; then
-        DETECTED_PACKAGES+=("$pkg")
-    fi
-done < <(pm list packages | sed 's/package://')
-    # Jika benar-benar kosong di sistem
     if [ ${#DETECTED_PACKAGES[@]} -eq 0 ]; then
         echo ""
-        echo "[!] Tidak ada aplikasi dengan nama 'roblox' yang terdeteksi."
-        read -p "Tekan Enter untuk kembali ke menu..."
+        echo "[!] Tidak ditemukan clone Roblox."
+        echo ""
+        echo "Kemungkinan:"
+        echo " - Clone belum pernah dijalankan."
+        echo " - Delta Lite belum membuat Activity Roblox."
+        echo " - Clone rusak."
+        echo ""
+        read -p "Tekan Enter..."
         return
     fi
 
-    echo ""
-    echo "-------------------------------------------------"
-    echo " DAFTAR PACKAGE ROBLOX:"
-    echo "-------------------------------------------------"
-    for i in "${!DETECTED_PACKAGES[@]}"; do
-        echo " [$((i + 1))] ${DETECTED_PACKAGES[$i]}"
-    done
-    echo "-------------------------------------------------"
-    read -p " Pilihan kamu: " SELECT_INPUT
+    ACTIVE_PACKAGES=()
 
-    if [ -z "$SELECT_INPUT" ] || [ "${SELECT_INPUT,,}" == "all" ]; then
+    echo ""
+    echo "Clone yang ditemukan:"
+    echo "-------------------------------------------------"
+
+    i=1
+    for pkg in "${DETECTED_PACKAGES[@]}"; do
+        echo "[$i] $pkg"
+        i=$((i+1))
+    done
+
+    echo "-------------------------------------------------"
+    echo "Ketik:"
+    echo " all     = semua clone"
+    echo " 1 2 3   = pilih beberapa"
+    echo "-------------------------------------------------"
+
+    read -p "Pilihan : " SELECT_INPUT
+
+    if [ -z "$SELECT_INPUT" ] || \
+       [ "$SELECT_INPUT" = "all" ]; then
+
         ACTIVE_PACKAGES=("${DETECTED_PACKAGES[@]}")
+
     else
-        for NUM in $SELECT_INPUT; do
+
+        for NUM in $SELECT_INPUT
+        do
             if [[ "$NUM" =~ ^[0-9]+$ ]]; then
-                IDX=$((NUM - 1))
-                if [ "$IDX" -ge 0 ] && [ "$IDX" -lt "${#DETECTED_PACKAGES[@]}" ]; then
-                    ACTIVE_PACKAGES+=("${DETECTED_PACKAGES[$IDX]}")
+
+                IDX=$((NUM-1))
+
+                if [ "$IDX" -ge 0 ] &&
+                   [ "$IDX" -lt "${#DETECTED_PACKAGES[@]}" ]; then
+
+                    ACTIVE_PACKAGES+=(
+                        "${DETECTED_PACKAGES[$IDX]}"
+                    )
+
                 fi
             fi
         done
     fi
 
-    echo ""
-    echo "-------------------------------------------------"
-    echo " STATUS AKHIR PACKAGE SELEKSI:"
-    echo "-------------------------------------------------"
-    for pkg in "${DETECTED_PACKAGES[@]}"; do
-        IS_ACTIVE=false
-        for active in "${ACTIVE_PACKAGES[@]}"; do
-            if [ "$active" == "$pkg" ]; then
-                IS_ACTIVE=true
-                break
-            fi
-        done
-
-        if [ "$IS_ACTIVE" = true ]; then
-            echo " [ ON  ]  $pkg"
-        else
-            echo " [ OFF ]  $pkg"
-        fi
-    done
-    echo "-------------------------------------------------"
-
     if [ ${#ACTIVE_PACKAGES[@]} -eq 0 ]; then
         echo ""
-        echo "[x] Error: Tidak ada package yang diaktifkan!"
+        echo "[!] Tidak ada package dipilih."
         sleep 2
         return
     fi
 
     echo ""
-    read -p "Masukkan jeda waktu antar-app (detik, default 30): " input_delay
+
+    read -p "Delay antar clone (default 30): " input_delay
+
     DELAY_TIME=${input_delay:-30}
 
-    echo ""
-    echo "[+] Konfigurasi berhasil disimpan!"
     save_config
+
+    echo ""
+    echo "[+] Package aktif:"
+    echo ""
+
+    for pkg in "${ACTIVE_PACKAGES[@]}"
+    do
+        echo "  ✓ $pkg"
+    done
+
     sleep 2
+}
+
+launch_clone(){
+
+    local pkg="$1"
+
+    echo "[OPEN] $pkg"
+
+    am force-stop "$pkg" >/dev/null 2>&1
+
+    sleep 1
+
+    monkey \
+        -p "$pkg" \
+        -c android.intent.category.LAUNCHER \
+        1 >/dev/null 2>&1
+
+    sleep 4
+
+    am start \
+        -n "$pkg/com.roblox.client.ActivityProtocolRedirector" \
+        -a android.intent.action.VIEW \
+        -d "$ROBLOX_PS_LINK" \
+        >/dev/null 2>&1
+
+    sleep 2
+
+}
+wait_clone(){
+
+    local pkg="$1"
+
+    local i
+
+    for ((i=0;i<10;i++))
+    do
+
+        if ps -A | grep -q "$pkg"
+        then
+            return
+        fi
+
+        sleep 1
+
+    done
+
 }
 
 # Menu 3: Toggle Auto Grid
@@ -340,6 +447,12 @@ setup_autoclear_cache() {
 
 # Menu 4: Jalankan Rejoin Background (DELAY PER-APP)
 start_rejoin() {
+            if [ ${#ACTIVE_PACKAGES[@]} -eq 0 ]; then
+    echo ""
+    echo "[!] Belum memilih clone."
+    sleep 2
+    return
+fi
     if [ -z "$ROBLOX_PS_LINK" ] || [ ${#ACTIVE_PACKAGES[@]} -eq 0 ]; then
         echo ""
         echo "[!] Harap atur Link PS (Menu 1) dan Package (Menu 2) terlebih dahulu!"
@@ -357,18 +470,20 @@ start_rejoin() {
     (
         FIRST_RUN=true
         while true; do
-            for pkg in "${ACTIVE_PACKAGES[@]}"; do
-                if [ "$FIRST_RUN" = true ]; then
-                    # Pengecualian: clone pertama kali dibuka cukup jeda 3 detik saja
-                    sleep 3
-                    FIRST_RUN=false
-                else
-                    sleep "$DELAY_TIME"
-                fi
+            if ps -A | grep -q "$pkg"
+then
+    continue
+fi
+                launch_clone "$pkg"
 
-                am start -a android.intent.action.VIEW -n "$pkg/com.roblox.client.ActivityProtocolRedirector" -d "$ROBLOX_PS_LINK" >/dev/null 2>&1
+wait_clone "$pkg" if ! ps -A | grep -q "$pkg"
+then
+    echo "[Retry] $pkg"
+
+    launch_clone "$pkg"
+fi>/dev/null 2>&1
                 if [ $? -ne 0 ]; then
-                    am start -a android.intent.action.VIEW -p "$pkg" -d "$ROBLOX_PS_LINK" >/dev/null 2>&1
+                    launch_clone "$pkg" >/dev/null 2>&1
                 fi
                 
                 if [ "$AUTO_GRID" = true ]; then
@@ -389,35 +504,25 @@ start_rejoin() {
 # Mengisi associative array global PKG_STATUS[pkg]="online"/"offline"
 declare -A PKG_STATUS
 
-refresh_pkg_status() {
-    local cmd=""
-    for pkg in "${ACTIVE_PACKAGES[@]}"; do
-        cmd+="pidof $pkg >/dev/null 2>&1 && echo O:$pkg || echo X:$pkg; "
-    done
+refresh_pkg_status(){
 
-    local RESULT
-    RESULT=$(su -c "$cmd" 2>/dev/null)
+    declare -gA PKG_STATUS
 
-    if [ -z "$RESULT" ]; then
-        # fallback non-root jika su gagal/tidak tersedia
-        for pkg in "${ACTIVE_PACKAGES[@]}"; do
-            if pidof "$pkg" &>/dev/null || ps -A 2>/dev/null | grep -q "$pkg"; then
-                PKG_STATUS[$pkg]="online"
-            else
-                PKG_STATUS[$pkg]="offline"
-            fi
-        done
-        return
-    fi
+    local PROC
 
-    while IFS=: read -r flag pkg; do
-        [ -z "$pkg" ] && continue
-        if [ "$flag" == "O" ]; then
-            PKG_STATUS[$pkg]="online"
+    PROC="$(ps -A 2>/dev/null)"
+
+    [ -z "$PROC" ] && PROC="$(ps 2>/dev/null)"
+
+    for pkg in "${ACTIVE_PACKAGES[@]}"
+    do
+        if echo "$PROC" | grep -Fq "$pkg"
+        then
+            PKG_STATUS["$pkg"]="online"
         else
-            PKG_STATUS[$pkg]="offline"
+            PKG_STATUS["$pkg"]="offline"
         fi
-    done <<< "$RESULT"
+    done
 }
 
 # Menu 6: Monitoring Status Live (Tanpa Username, Sesuai UI HP)
@@ -531,6 +636,7 @@ while true; do
     fi
     echo " Link PS    : ${ROBLOX_PS_LINK:-Belum diatur}"
     echo " Pkg Aktif  : ${ACTIVE_PACKAGES[*]:-Belum diatur}"
+    echo " Clone Terdeteksi : ${#DETECTED_PACKAGES[@]}"
     echo " Jeda Waktu : $DELAY_TIME detik per-app"
     echo " Auto-Grid  : $( [ "$AUTO_GRID" = true ] && echo "AKTIF" || echo "MATI" )"
     if [ -n "$CACHE_PID" ] && kill -0 "$CACHE_PID" 2>/dev/null; then
@@ -552,6 +658,7 @@ while true; do
     echo "8. Reset Config Tersimpan"
     echo "9. Keluar (Exit)"
     echo "10. Toggle Auto-Clear Cache (Background)"
+    echo "11. Refresh Daftar Clone"
     echo "================================================="
     read -p "Pilih menu (1-10): " MENU_CHOICE
 
@@ -571,7 +678,11 @@ while true; do
             if [[ "$CONFIRM_RESET" =~ ^[Yy]$ ]]; then
                 stop_rejoin
                 stop_cache_clear
-                rm -f "$CONFIG_FILE" "$PID_FILE" "$CACHE_PID_FILE"
+                rm -f \
+"$CONFIG_FILE" \
+"$PID_FILE" \
+"$CACHE_PID_FILE" \
+"$PACKAGE_CACHE"
                 ROBLOX_PS_LINK=""
                 DELAY_TIME=30
                 ACTIVE_PACKAGES=()
@@ -599,5 +710,20 @@ while true; do
             echo "[x] Pilihan tidak valid!"
             sleep 1
             ;;
+        11)
+
+refresh_package_cache
+
+echo ""
+
+echo "[+] Scan selesai."
+
+echo "Clone ditemukan : ${#DETECTED_PACKAGES[@]}"
+
+sleep 2
+
+;;
+        
+    
     esac
 done
