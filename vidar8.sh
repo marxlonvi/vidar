@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ================= KONFIGURASI AUTO-UPDATE =================
-SCRIPT_URL="https://raw.githubusercontent.com/marxlonvi/vidar/refs/heads/main/vidar7.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/marxlonvi/vidar/refs/heads/main/vidar8.sh"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 
 check_update() {
@@ -205,8 +205,13 @@ setup_package() {
     ACTIVE_PACKAGES=()
     
     # Murni hanya 1 cara deteksi
-    DETECTED_PACKAGES=($(pm list packages -3 2>/dev/null | grep -i "roblox" | sed 's/package://g' | sort -u))
+    DETECTED_PACKAGES=()
 
+while IFS= read -r pkg; do
+    if dumpsys package "$pkg" 2>/dev/null | grep -qi "com.roblox.client.ActivityProtocolRedirector"; then
+        DETECTED_PACKAGES+=("$pkg")
+    fi
+done < <(pm list packages | sed 's/package://')
     # Jika benar-benar kosong di sistem
     if [ ${#DETECTED_PACKAGES[@]} -eq 0 ]; then
         echo ""
