@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ================= KONFIGURASI AUTO-UPDATE =================
-SCRIPT_URL="https://gist.githubusercontent.com/marxlonvi/ae98a87dfdadbd8aa013e1346e92c160/raw/vidar5.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/marxlonvi/vidar/refs/heads/main/vidar6.sh"
 SCRIPT_PATH="$(realpath "$0" 2>/dev/null || echo "$0")"
 
 check_update() {
