@@ -467,21 +467,19 @@ monitor_services() {
             fi
         done
 
-        # 3. Info System & Memory (format list mini, fixed width kecil)
-        echo "------------------------"
-        echo " Online: ${AKTIF_COUNT}/${TOTAL_PKG}  RAM: ${MEM_INFO}"
-        echo "------------------------"
+        # 3. Tampilan polos tanpa garis/warna sama sekali
+        echo "Online: ${AKTIF_COUNT}/${TOTAL_PKG} | RAM: ${MEM_INFO}"
+        echo ""
 
-        # 4. Daftar Package (format list mini)
         for pkg in "${ACTIVE_PACKAGES[@]}"; do
             if [ "${PKG_STATUS[$pkg]}" == "online" ]; then
-                echo -e "${ORANGE}ON  $pkg${NC}"
+                echo "ON  $pkg"
             else
                 echo "OFF $pkg"
             fi
         done
 
-        echo "------------------------"
+        echo ""
         echo "Refresh ${MON_INTERVAL}d, 'q' keluar"
         
         # Auto-refresh sesuai interval yang dipilih. Tekan 'q' untuk keluar.
