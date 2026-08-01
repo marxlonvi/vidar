@@ -475,7 +475,7 @@ monitor_services() {
         # 4. Daftar Package (format list mini)
         for pkg in "${ACTIVE_PACKAGES[@]}"; do
             if [ "${PKG_STATUS[$pkg]}" == "online" ]; then
-                echo -e "${ORANGE}ON  $pkg${NC}"
+                echo -e "${GREEN}ON  $pkg${NC}"
             else
                 echo "OFF $pkg"
             fi
