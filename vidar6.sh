@@ -467,24 +467,22 @@ monitor_services() {
             fi
         done
 
-        # 3. Info System & Memory (format list simpel, tanpa border kotak)
-        echo "-------------------------------------------------"
-        echo " STATUS MONITORING (${AKTIF_COUNT}/${TOTAL_PKG} Online)"
-        echo "-------------------------------------------------"
-        echo " Memory     : ${MEM_INFO}"
-        echo "-------------------------------------------------"
+        # 3. Info System & Memory (format list mini, fixed width kecil)
+        echo "------------------------"
+        echo " Online: ${AKTIF_COUNT}/${TOTAL_PKG}  RAM: ${MEM_INFO}"
+        echo "------------------------"
 
-        # 4. Daftar Package (format list simpel seperti Menu 2, nama tidak dipotong)
+        # 4. Daftar Package (format list mini)
         for pkg in "${ACTIVE_PACKAGES[@]}"; do
             if [ "${PKG_STATUS[$pkg]}" == "online" ]; then
-                echo -e " ${ORANGE}[ ON  ]  $pkg${NC}"
+                echo -e "${ORANGE}ON  $pkg${NC}"
             else
-                echo " [ OFF ]  $pkg"
+                echo "OFF $pkg"
             fi
         done
 
-        echo "-------------------------------------------------"
-        echo "Refresh tiap ${MON_INTERVAL}d. Tekan 'q' untuk keluar."
+        echo "------------------------"
+        echo "Refresh ${MON_INTERVAL}d, 'q' keluar"
         
         # Auto-refresh sesuai interval yang dipilih. Tekan 'q' untuk keluar.
         read -t "$MON_INTERVAL" -n 1 KEY
